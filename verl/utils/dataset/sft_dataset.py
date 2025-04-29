@@ -85,25 +85,37 @@ class SFTDataset(Dataset):
             # read parquet files and cache
             dataframe = pd.read_parquet(parquet_file)
             dataframes.append(dataframe)
+
         self.dataframe = pd.concat(dataframes)
-        self.prompts = self.dataframe[self.prompt_key]
-        for key in self.prompt_dict_keys:
-            # type(x): pandas.core.series.Series
-            # type(x[0]): numpy.ndarray
-            # type(x[0][0]): dict
-            try:
-                self.prompts = self.prompts.apply(lambda x: series_to_item(x)[key], axis=1)  # noqa: B023
-            except Exception:
-                print(f"self.prompts={self.prompts}")
-                raise
+        if '.' in self.prompt_key[0]:
+            top_key, sub_key = self.prompt_key[0].split('.', 1)
+            self.prompts = self.dataframe[top_key].apply(lambda x: x.get(sub_key) if isinstance(x, dict) else None)
+        else:
+            self.prompts = self.dataframe[self.prompt_key]
+
+        # for key in self.prompt_dict_keys:
+        #     # type(x): pandas.core.series.Series
+        #     # type(x[0]): numpy.ndarray
+        #     # type(x[0][0]): dict
+        #     try:
+        #         self.prompts = self.prompts.apply(lambda x: series_to_item(x)[key], axis=1)  # noqa: B023
+        #     except Exception:
+        #         print(f"self.prompts={self.prompts}")
+        #         raise
+
         self.prompts = self.prompts.tolist()
-        self.responses = self.dataframe[self.response_key]
-        for key in self.response_dict_keys:
-            try:
-                self.responses = self.responses.apply(lambda x: series_to_item(x)[key], axis=1)  # noqa: B023
-            except Exception:
-                print(f"self.responses={self.responses}")
-                raise
+
+        if '.' in self.response_key[0]:
+            top_key, sub_key = self.response_key[0].split('.', 1)
+            self.responses = self.dataframe[top_key].apply(lambda x: x.get(sub_key) if isinstance(x, dict) else None)
+        else:
+            self.responses = self.dataframe[self.response_key]
+        # for key in self.response_dict_keys:
+        #     try:
+        #         self.responses = self.responses.apply(lambda x: series_to_item(x)[key], axis=1)  # noqa: B023
+        #     except Exception:
+        #         print(f"self.responses={self.responses}")
+        #         raise
         self.responses = self.responses.tolist()
 
     def __len__(self):
