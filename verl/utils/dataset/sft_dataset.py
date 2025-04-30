@@ -133,7 +133,7 @@ class SFTDataset(Dataset):
         # string
         prompt_chat_str = tokenizer.apply_chat_template(prompt_chat, add_generation_prompt=True, tokenize=False)
         response_chat_str = response + tokenizer.eos_token
-
+        
         # tokenize
         prompt_ids_output = tokenizer(prompt_chat_str, return_tensors="pt", add_special_tokens=False)
         prompt_ids = prompt_ids_output["input_ids"][0]
@@ -178,7 +178,7 @@ class SFTDataset(Dataset):
             loss_mask[: min(prompt_length, loss_mask.size(0)) - 1] = 0
         # mask out the last token in response
         loss_mask[min(prompt_length + response_length, loss_mask.size(0)) - 1] = 0
-
+ 
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,

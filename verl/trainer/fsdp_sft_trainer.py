@@ -27,6 +27,7 @@ import logging
 import re
 from contextlib import nullcontext
 
+import json
 import hydra
 import torch
 import torch.distributed
@@ -112,7 +113,7 @@ class FSDPSFTTrainer:
         # TODO: add checkpoint manager
         if self.device_mesh.get_rank() == 0:
             print(self.config)
-
+            
     def _normalize_config_bsz(self):
         dp_size = self.device_mesh.size(0) if not self.ulysses_device_mesh else self.ulysses_device_mesh.size(0)
         if self.device_mesh.get_rank() == 0:
@@ -178,11 +179,12 @@ class FSDPSFTTrainer:
             pin_memory=True,
             drop_last=True,
         )
-
+        
     def _build_model_optimizer(self):
         # TODO (zhangchi.usc1992):
         # 1. support pretrain from random weights
         # 2. support init directly from sharded weights
+
         local_model_path = copy_to_local(src=self.config.model.partial_pretrain, verbose=True)
 
         if self.config.model.get("external_lib", None) is not None:
@@ -292,7 +294,7 @@ class FSDPSFTTrainer:
             self.lr_scheduler = get_wsd_schedule_with_warmup(optimizer=self.optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=self.total_steps)
         else:
             raise ValueError(f"Unknown lr scheduler: {self.config.optim.lr_scheduler}")
-
+    
     def _compute_loss_and_backward(self, batch, do_backward=True):
         """Compute loss with optional sequence parallelism and remove padding features"""
         use_sp = self.use_remove_padding and self.config.ulysses_sequence_parallel_size > 1
@@ -315,13 +317,16 @@ class FSDPSFTTrainer:
 
                 shift_logits = logits[..., :-1, :].contiguous()
                 shift_labels = labels.contiguous()
+                
                 # Flatten the tokens
                 shift_logits = shift_logits.view(-1, self.model.config.vocab_size)
                 shift_labels = shift_labels.view(-1)
+                
                 # Enable model parallelism
                 shift_labels = shift_labels.to(shift_logits.device)
                 loss = loss_fct(shift_logits, shift_labels)
                 loss = loss * loss_mask.to(loss.device)
+                
             else:
                 # IMPORTANT: We have a big assumption here, so we can shard the SAME sequence across SP ranks
                 # i.e., each GPU has <1 sequence, and each SP group has 1 sequence
@@ -392,6 +397,7 @@ class FSDPSFTTrainer:
         micro_batches = batch.split(self.config.data.micro_batch_size_per_gpu)
         n_micro_batches = len(micro_batches)
         step_loss = 0
+        # Gradient accumulation
         for micro_batch in micro_batches:
             loss = self._compute_loss_and_backward(batch=micro_batch) / n_micro_batches
             step_loss += loss.item()
@@ -480,6 +486,7 @@ class FSDPSFTTrainer:
             ):
                 global_step += 1
                 data = TensorDict(data, batch_size=self.config.data.train_batch_size).cuda()
+    
                 metric = self.training_step(data)
                 if rank == 0:
                     tracking.log(data=metric, step=global_step)
@@ -518,8 +525,9 @@ class FSDPSFTTrainer:
             self.save_checkpoint(step=global_step)
 
 
-@hydra.main(config_path="config", config_name="sft_trainer", version_base=None)
+# @hydra.main(config_path="config", config_name="sft_trainer", version_base=None)
 def main(config):
+    raise
     local_rank, rank, world_size = initialize_global_process_group()
 
     device_mesh = init_device_mesh(device_type="cuda", mesh_shape=(world_size,), mesh_dim_names=("fsdp",))
@@ -530,4 +538,5 @@ def main(config):
 
 
 if __name__ == "__main__":
+    raise
     main()
